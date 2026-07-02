@@ -1,0 +1,82 @@
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+    .stApp {
+        background-color: #0c0d11 !important;
+        font-family: 'Share Tech Mono', monospace !important;
+        color: #00FF66 !important;
+    }
+
+    .terminal-frame {
+        border: 3px solid #2d313f;
+        border-radius: 12px;
+        background-color: #050608;
+        padding: 20px;
+        box-shadow: 0 0 20px rgba(0, 255, 102, 0.1);
+        margin-bottom: 20px;
+    }
+
+    .terminal-header {
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 2px dashed #2d313f;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+        font-size: 1.1rem;
+    }
+    
+    .status-on-time {
+        color: #00FF66;
+        font-weight: bold;
+        text-shadow: 0 0 5px #00FF66;
+    }
+
+    .chat-box {
+        margin-bottom: 15px;
+        padding: 12px 15px;
+        border-radius: 6px;
+        font-size: 1.05rem;
+    }
+
+    .user-msg {
+        border: 1px solid #00FF66;
+        background-color: rgba(0, 255, 102, 0.03);
+        color: #00FF66;
+    }
+
+    .ai-msg {
+        border: 1px solid #00FFFF;
+        background-color: rgba(0, 255, 255, 0.03);
+        color: #00FFFF;
+    }
+
+    .msg-header {
+        font-size: 0.85rem;
+        opacity: 0.8;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 5px;
+    }
+
+    div[data-baseweb="input"] {
+        background-color: #050608 !important;
+        border: 1px solid #2d313f !important;
+    }
+    
+    div[data-baseweb="input"] input {
+        color: #00FF66 !important;
+        font-family: 'Share Tech Mono', monospace !important;
+    }
+
+    .stButton>button {
+        background-color: transparent !important;
+        color: #00FF66 !important;
+        border: 1px solid #00FF66 !important;
+        font-family: 'Share Tech Mono', monospace !important;
+        width: 100%;
+    }
+
+    .stButton>button:hover {
+        background-color: #00FF66 !important;
+        color: #050608 !important;
+        box-shadow: 0 0 10px #00FF66;
+    }
