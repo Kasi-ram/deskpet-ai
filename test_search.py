@@ -6,7 +6,7 @@ embedding_service = EmbeddingService()
 chroma_service = ChromaService()
 
 
-question = "Who won the Cricket World Cup?"
+question = "whether travel schedule changes are allowed once travel has commenced?"
 
 
 question_embedding = embedding_service.embed(

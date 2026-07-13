@@ -1,12 +1,20 @@
-import fitz  # PyMuPDF
+import fitz
 
 
 class PDFService:
 
-    def extract_text(self, pdf_path):
-        doc = fitz.open(pdf_path)
+    def extract_pages(self, pdf_path):
         pages = []
-        for page in doc:
-            pages.append(page.get_text())
-        doc.close()
-        return "\n".join(pages)
+
+        with fitz.open(pdf_path) as doc:
+
+            for page_number, page in enumerate(
+                doc,
+                start=1
+            ):
+                pages.append({
+                    "page": page_number,
+                    "text": page.get_text()
+                })
+
+        return pages

@@ -10,11 +10,11 @@ embedding_service = EmbeddingService()
 chroma_service = ChromaService()
 
 
-text = pdf_service.extract_text(
+pages = pdf_service.extract_pages(
     "data/airline_policy.pdf"
 )
 
-chunks = chunk_service.split_text(text)
+chunks = chunk_service.split_pages(pages)
 
 print("Total chunks:", len(chunks))
 
@@ -27,14 +27,17 @@ for index, chunk in enumerate(chunks):
         f"Generating embedding {index + 1}/{len(chunks)}"
     )
 
-    embedding = embedding_service.embed(chunk)
+    embedding = embedding_service.embed(
+            chunk["text"]
+        )
 
     embeddings.append(embedding)
 
 
 chroma_service.add_chunks(
     chunks,
-    embeddings
+    embeddings,
+    source="British Airways Group Terms"
 )
 
 print("Indexing completed.")
