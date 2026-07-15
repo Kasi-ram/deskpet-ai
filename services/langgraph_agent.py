@@ -1,17 +1,48 @@
 import json
-import datetime
+import re
 
 from typing import TypedDict
 
-from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import (
+    StateGraph,
+    START,
+    END
+)
+
+from langgraph.checkpoint.memory import (
+    InMemorySaver
+)
 
 from services.groq_service import GroqService
+
 from tools.knowledge_tool import KnowledgeTool
 from tools.calculator_tool import CalculatorTool
 
 
-class AgentState(TypedDict, total=False):
+def is_math_expression(text):
+
+            text = text.strip()
+
+            return bool(
+                re.fullmatch(
+                    r"[0-9\.\+\-\*\/\(\)\s]+",
+                    text
+                )
+            )
+
+def extract_math_expression(text):
+
+    matches = re.findall(
+        r"\d+(?:\.\d+)?(?:\s*[\+\-\*\/]\s*\d+(?:\.\d+)?)+",
+        text
+    )
+
+    if matches:
+        return matches[0]
+
+    return ""
+
+class AgentState(TypedDict):
 
     question: str
     conversation_history: list
@@ -22,6 +53,8 @@ class AgentState(TypedDict, total=False):
     calculator_expression: str
 
     knowledge_answer: str
+    knowledge_found: bool
+
     calculator_answer: str
 
     answer: str
@@ -34,10 +67,17 @@ class LangGraphAgent:
 
         self.llm = GroqService()
 
-        self.knowledge_tool = KnowledgeTool()
-        self.calculator_tool = CalculatorTool()
+        self.knowledge_tool = (
+            KnowledgeTool()
+        )
 
-        graph = StateGraph(AgentState)
+        self.calculator_tool = (
+            CalculatorTool()
+        )
+
+        graph = StateGraph(
+            AgentState
+        )
 
         graph.add_node(
             "planner",
@@ -74,8 +114,7 @@ class LangGraphAgent:
             self.route_after_planner,
             {
                 "knowledge": "knowledge",
-                "calculator": "calculator",
-                "general": "general"
+                "calculator": "calculator"
             }
         )
 
@@ -84,6 +123,7 @@ class LangGraphAgent:
             self.route_after_knowledge,
             {
                 "calculator": "calculator",
+                "general": "general",
                 "final_answer": "final_answer"
             }
         )
@@ -109,15 +149,74 @@ class LangGraphAgent:
             checkpointer=self.memory
         )
 
-
-    def planner_node(self, state):
+    def planner_node(
+        self,
+        state
+    ):
 
         question = state["question"]
 
-        conversation_history = state.get(
-            "conversation_history",
-            []
+        expression = extract_math_expression(question)
+
+        has_math = expression != ""
+        pure_math = (
+            expression
+            and expression == question.strip()
         )
+
+        if pure_math:
+
+            return {
+                "selected_tools": ["calculator"],
+                "knowledge_query": "",
+                "calculator_expression": expression,
+                "knowledge_answer": "",
+                "knowledge_found": False,
+                "calculator_answer": "",
+                "answer": "",
+                "sources": []
+            }
+        
+        if has_math:
+
+            question_without_math = question.replace(
+                expression,
+                ""
+            ).strip()
+
+            return {
+                "selected_tools": [
+                    "knowledge",
+                    "calculator"
+                ],
+                "knowledge_query": question_without_math,
+                "calculator_expression": expression,
+                "knowledge_answer": "",
+                "knowledge_found": False,
+                "calculator_answer": "",
+                "answer": "",
+                "sources": []
+            }
+
+        if is_math_expression(question):
+
+            return {
+                "selected_tools": [
+                    "calculator"
+                ],
+                "knowledge_query": "",
+                "calculator_expression": question,
+                "knowledge_answer": "",
+                "knowledge_found": False,
+                "calculator_answer": "",
+                "answer": "",
+                "sources": []
+            }
+
+        conversation_history = (
+                state.get("conversation_history")
+                or []
+            )
 
         history_text = "\n".join(
             [
@@ -131,178 +230,43 @@ class LangGraphAgent:
         )
 
         prompt = f"""
-You are the planning node for DeskPet AI.
+You are the planner for DeskPet AI.
 
-DeskPet AI is primarily an airline policy assistant.
+DeskPet is primarily a document knowledge assistant.
 
-You have EXACTLY TWO tools.
-
-TOOL: knowledge
-
-Purpose:
-Search airline policies, travel rules,
-booking rules and internal documents.
-
-Use the knowledge tool whenever the answer
-might come from uploaded documents.
-
-Examples:
-
-• travel policies
-• baggage
-• luggage
-• complimentary bags
-• check-in
-• booking
-• refunds
-• airline rules
-• airport procedures
-• ticket changes
-• names
-• payments
-• routes
-• schedules
-• ANY question about airline documents
-• ANY question that appears to ask for factual
-  information from uploaded documents
-
-When in doubt, prefer the knowledge tool.
-
-TOOL: calculator
-
-Purpose:
-Perform mathematical calculations.
-
-IMPORTANT RULES:
-
-1. The ONLY valid tools are:
+Available tools:
 
 knowledge
+Search uploaded documents.
+
 calculator
+Perform mathematical calculations.
 
-2. Conversation history is NOT a tool.
+Rules:
 
-3. If the current question is a follow-up,
-use conversation history to understand
-what the user is referring to.
+1. Use calculator when mathematical calculation
+   is requested.
 
-4. Follow-up phrases include:
+2. For every non-mathematical factual question,
+   use knowledge first.
 
-"What about before?"
-"What about after?"
-"What about that?"
-"Can I do it before?"
-"And after departure?"
-"What about before commencement?"
+3. A question may use both tools.
 
-5. If the previous conversation was about
-an airline policy and the current question
-is a follow-up about that topic,
-use the knowledge tool.
+4. Use conversation history only to rewrite
+   follow-up questions into standalone questions.
 
-6. Rewrite follow-up questions into complete
-standalone knowledge questions.
+Example:
 
-7. Preserve the meaning and subject from the
-conversation history.
+Previous:
+Can I change travel after commencement?
 
-8. knowledge_query must NEVER be empty when
-knowledge is selected.
-
-9. calculator_expression must NEVER be empty
-when calculator is selected.
-
-10. Select ALL tools required for compound
-questions.
-
-11. If the question does not require airline
-knowledge or calculation, return an empty
-tools list.
-
-Return ONLY JSON.
-
-Return EXACTLY this structure:
-
-{{
-    "tools": [],
-    "knowledge_query": "",
-    "calculator_expression": ""
-}}
-
-EXAMPLE 1
-
-Question:
-
-Can I change my travel after commencement?
-
-Response:
-
-{{
-    "tools": ["knowledge"],
-    "knowledge_query":
-        "Can I change my travel after commencement?",
-    "calculator_expression": ""
-}}
-
-EXAMPLE 2
-
-Conversation history:
-
-user: Can I change my travel after commencement?
-
-assistant: No date, flight or route changes are
-allowed once travel has commenced.
-
-Current question:
-
+Current:
 What about before commencement?
 
-Response:
+knowledge_query:
+Can I change travel before commencement?
 
-{{
-    "tools": ["knowledge"],
-    "knowledge_query":
-        "Can I change my travel before commencement?",
-    "calculator_expression": ""
-}}
-
-EXAMPLE 3
-
-Question:
-
-What is 25 * 18?
-
-Response:
-
-{{
-    "tools": ["calculator"],
-    "knowledge_query": "",
-    "calculator_expression": "25 * 18"
-}}
-
-EXAMPLE 4
-
-Question:
-
-What is 25 * 18 and can I change my travel
-after commencement?
-
-Response:
-
-{{
-    "tools": ["knowledge", "calculator"],
-    "knowledge_query":
-        "Can I change my travel after commencement?",
-    "calculator_expression": "25 * 18"
-}}
-
-EXAMPLE 5
-
-Question:
-
-What is the date today?
-
-Response:
+Return JSON exactly:
 
 {{
     "tools": [],
@@ -314,222 +278,200 @@ CONVERSATION HISTORY:
 
 {history_text}
 
-CURRENT USER QUESTION:
+CURRENT QUESTION:
 
 {question}
 """
 
-        response = self.llm.ask_json(prompt)
+        response = self.llm.ask_json(
+            prompt
+        )
 
-        print("\nPLANNER RESPONSE")
-        print(response)
+        decision = json.loads(
+            response
+        )
 
-        decision = json.loads(response)
+        print("\nPLANNER DECISION")
+        print(json.dumps(decision, indent=2))
 
-        allowed_tools = {
-            "knowledge",
-            "calculator"
-        }
+        selected_tools = decision.get("tools", [])
 
-        selected_tools = [
-            tool
-            for tool in decision.get(
-                "tools",
-                []
-            )
-            if tool in allowed_tools
-        ]
-
-        knowledge_query = (
-            decision.get(
-                "knowledge_query",
-                ""
-            )
-            or ""
+        knowledge_query = decision.get(
+            "knowledge_query",
+            ""
         ).strip()
 
-        calculator_expression = (
-            decision.get(
-                "calculator_expression",
-                ""
-            )
-            or ""
+        calculator_expression = decision.get(
+            "calculator_expression",
+            ""
         ).strip()
 
+        # -----------------------------
+        # Force correct routing
+        # -----------------------------
+
+        # Validate calculator output
+
+        # -------------------------------------------------
+        # Validate calculator tool
+        # -------------------------------------------------
+
+        # Empty expression -> remove calculator
+        if not calculator_expression:
+
+            if "calculator" in selected_tools:
+                selected_tools.remove("calculator")
+
+        # Non-empty but invalid expression -> remove calculator
+        elif not is_math_expression(calculator_expression):
+
+            calculator_expression = ""
+
+            if "calculator" in selected_tools:
+                selected_tools.remove("calculator")
+
+        # Knowledge should always be used when
+        # a knowledge query exists
+        if knowledge_query:
+
+            if "knowledge" not in selected_tools:
+                selected_tools.append("knowledge")
+
+        # If no tool remains,
+        # default to knowledge
+        if not selected_tools:
+
+            selected_tools = ["knowledge"]
+
+        # If knowledge query is empty,
+        # use original question
         if (
             "knowledge" in selected_tools
             and not knowledge_query
         ):
-
             knowledge_query = question
-
-        if (
-            "calculator" in selected_tools
-            and not calculator_expression
-        ):
-
-            calculator_expression = question
 
         return {
             "selected_tools": selected_tools,
             "knowledge_query": knowledge_query,
-            "calculator_expression": (
-                calculator_expression
-            ),
-
-            # clear previous turn data
+            "calculator_expression": calculator_expression,
             "knowledge_answer": "",
+            "knowledge_found": False,
             "calculator_answer": "",
             "answer": "",
             "sources": []
         }
 
+    def route_after_planner(
+        self,
+        state
+    ):
 
-    def route_after_planner(self, state):
+        if (
+            "knowledge"
+            in state["selected_tools"]
+        ):
 
-        tools = state.get(
-            "selected_tools",
-            []
-        )
-
-        if "knowledge" in tools:
             return "knowledge"
 
-        if "calculator" in tools:
-            return "calculator"
+        return "calculator"
 
-        return "general"
+    def knowledge_node(
+        self,
+        state
+    ):
 
-
-    def knowledge_node(self, state):
-
-        query = state.get(
-            "knowledge_query",
-            ""
-        )
-
-        if not query.strip():
-
-            return {
-                "knowledge_answer": (
-                    "I could not determine the "
-                    "knowledge question."
-                ),
-                "sources": []
-            }
-
-        print("\nKNOWLEDGE QUERY")
-        print(query)
-
-        result = self.knowledge_tool.execute(
-            query
+        result = (
+            self.knowledge_tool.execute(
+                state["knowledge_query"]
+            )
         )
 
         return {
             "knowledge_answer": result["answer"],
+            "knowledge_found": result["found"],
             "sources": result["sources"]
         }
 
+    def route_after_knowledge(
+        self,
+        state
+    ):
 
-    def route_after_knowledge(self, state):
+        if (
+            "calculator"
+            in state["selected_tools"]
+        ):
 
-        selected_tools = state.get(
-            "selected_tools",
-            []
-        )
-
-        if "calculator" in selected_tools:
             return "calculator"
+
+        if not state["knowledge_found"]:
+
+            return "general"
 
         return "final_answer"
 
+    def calculator_node(
+        self,
+        state
+    ):
 
-    def calculator_node(self, state):
-
-        expression = state.get(
-            "calculator_expression",
-            ""
-        )
-
-        if not expression.strip():
-
-            return {
-                "calculator_answer": (
-                    "No calculation expression "
-                    "was provided."
-                )
-            }
-
-        print("\nCALCULATOR EXPRESSION")
-        print(expression)
-
-        result = self.calculator_tool.execute(
-            expression
+        result = (
+            self.calculator_tool.execute(
+                state[
+                    "calculator_expression"
+                ]
+            )
         )
 
         return {
             "calculator_answer": result["answer"]
         }
 
-
-    def general_node(self, state):
+    def general_node(
+        self,
+        state
+    ):
 
         question = state["question"]
-
-        today = datetime.date.today()
-
-        conversation_history = state.get(
-            "conversation_history",
-            []
-        )
-
-        history_text = "\n".join(
-            [
-                (
-                    f'{message["role"]}: '
-                    f'{message["content"]}'
-                )
-                for message
-                in conversation_history[-6:]
-            ]
-        )
 
         prompt = f"""
 You are DeskPet AI.
 
-Answer the user's general question directly.
+The uploaded knowledge base was searched first
+and did not contain an answer.
 
-Do not invent airline policy information.
+Answer only if this is a general knowledge,
+casual, or utility question.
 
-If an airline policy question reaches this node,
-say that airline policy knowledge must be searched.
+If the question appears to ask about an airline
+policy, internal rule, uploaded document, baggage,
+booking, ticket, travel rule, or company-specific
+information, respond exactly:
 
-Today's system date is:
-
-{today.strftime("%d %B %Y")}
-
-CONVERSATION HISTORY:
-
-{history_text}
+"I could not find this information in the available knowledge base."
 
 USER QUESTION:
 
 {question}
 """
 
-        answer = self.llm.ask(prompt)
+        answer = self.llm.ask(
+            prompt
+        )
 
         return {
             "answer": answer
         }
 
+    def final_answer_node(
+        self,
+        state
+    ):
 
-    def final_answer_node(self, state):
-
-        selected_tools = state.get(
-            "selected_tools",
-            []
-        )
+        selected_tools = state[
+            "selected_tools"
+        ]
 
         knowledge_answer = state.get(
             "knowledge_answer",
@@ -541,15 +483,12 @@ USER QUESTION:
             ""
         )
 
-        if selected_tools == ["knowledge"]:
+        current_answer = state.get(
+            "answer",
+            ""
+        )
 
-            answer = knowledge_answer
-
-        elif selected_tools == ["calculator"]:
-
-            answer = calculator_answer
-
-        elif (
+        if (
             "knowledge" in selected_tools
             and "calculator" in selected_tools
         ):
@@ -560,19 +499,24 @@ USER QUESTION:
                 f"{calculator_answer}."
             )
 
+        elif "calculator" in selected_tools:
+
+            answer = calculator_answer
+
+        elif state["knowledge_found"]:
+
+            answer = knowledge_answer
+
         else:
 
-            answer = state.get(
-                "answer",
-                ""
-            )
+            answer = current_answer
 
-        history = state.get(
-            "conversation_history",
-            []
+        history = (
+            state.get("conversation_history")
+            or []
         )
 
-        updated_history = history + [
+        history = history + [
             {
                 "role": "user",
                 "content": state["question"]
@@ -585,13 +529,8 @@ USER QUESTION:
 
         return {
             "answer": answer,
-            "conversation_history": updated_history,
-            "sources": state.get(
-                "sources",
-                []
-            )
+            "conversation_history": history
         }
-
 
     def ask(
         self,
@@ -605,22 +544,16 @@ USER QUESTION:
             }
         }
 
-        # IMPORTANT:
-        # Do not pass conversation_history=[]
-        # LangGraph restores it using the checkpointer.
-
         result = self.graph.invoke(
             {
                 "question": question,
-
+                "conversation_history": None,
                 "selected_tools": [],
-
                 "knowledge_query": "",
                 "calculator_expression": "",
-
                 "knowledge_answer": "",
+                "knowledge_found": False,
                 "calculator_answer": "",
-
                 "answer": "",
                 "sources": []
             },
@@ -628,20 +561,14 @@ USER QUESTION:
         )
 
         return {
-            "answer": result.get(
-                "answer",
-                ""
-            ),
-            "sources": result.get(
-                "sources",
-                []
-            )
+            "answer": result["answer"],
+            "sources": result["sources"]
         }
     
     def stream(
-    self,
-    question,
-    thread_id="default"
+        self,
+        question,
+        thread_id="default"
     ):
 
         config = {
@@ -650,50 +577,49 @@ USER QUESTION:
             }
         }
 
-        input_state = {
+        initial_state = {
             "question": question,
-
+            "conversation_history": None,
             "selected_tools": [],
-
             "knowledge_query": "",
             "calculator_expression": "",
-
             "knowledge_answer": "",
+            "knowledge_found": False,
             "calculator_answer": "",
-
             "answer": "",
             "sources": []
         }
 
-        final_result = None
+        result = None
 
-        for event in self.graph.stream(
-            input_state,
+        for update in self.graph.stream(
+            initial_state,
             config=config,
             stream_mode="updates"
         ):
 
-            for node_name, update in event.items():
+            node = next(iter(update.keys()))
 
-                yield {
-                    "type": "node",
-                    "node": node_name
-                }
+            state = update[node]
 
-                if node_name == "final_answer":
-
-                    final_result = update
-
-        if final_result:
+            result = state
 
             yield {
-                "type": "result",
-                "answer": final_result.get(
-                    "answer",
-                    ""
-                ),
-                "sources": final_result.get(
-                    "sources",
-                    []
-                )
+                "type": "node",
+                "node": node,
+                "state": state
             }
+
+        if result is None:
+
+            result = self.graph.invoke(
+                initial_state,
+                config=config
+            )
+
+        yield {
+            "type": "result",
+            "answer": result.get("answer", ""),
+            "sources": result.get("sources", [])
+        }
+        

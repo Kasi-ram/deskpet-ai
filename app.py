@@ -1,11 +1,8 @@
-from pathlib import Path
-import shutil
 import uuid
-import os
+
 
 import streamlit as st
 
-from services import chroma_service
 from services.langgraph_agent import LangGraphAgent
 
 from services.document_ingestion_service import (
@@ -40,6 +37,9 @@ if "thread_id" not in st.session_state:
         uuid.uuid4()
     )
 
+if "uploader_key" not in st.session_state:
+
+    st.session_state.uploader_key = 0
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -206,62 +206,85 @@ with st.sidebar:
         type=[
             "pdf",
             "txt"
-        ]
+        ],
+        key=(
+            f"document_uploader_"
+            f"{st.session_state.uploader_key}"
+        )
     )
 
     if uploaded_file is not None:
 
-        if st.button("Add to Knowledge Base"):
+        if st.button(
+            "Add to Knowledge Base"
+        ):
 
-            try:
+            with st.spinner(
+                "Processing document..."
+            ):
 
-                with st.spinner("Processing document..."):
-
-                    result = ingestion_service.ingest_document(
+                result = (
+                    ingestion_service
+                    .ingest_document(
                         uploaded_file
                     )
+                )
 
-                if result["status"] == "success":
+            if result["status"] == "success":
 
-                    st.success(
-                        f'Indexed {result["source"]}'
+                st.success(
+                    f'Indexed {result["source"]}'
+                )
+
+                st.write(
+                    f'Pages: {result["pages"]}'
+                )
+
+                st.write(
+                    f'Chunks: {result["chunks"]}'
+                )
+
+                st.session_state.uploader_key += 1
+
+                st.rerun()
+
+            elif result["status"] == "duplicate":
+
+                st.warning(
+                    "Document already exists."
+                )
+
+            elif result["status"] == "empty":
+
+                st.warning(
+                    "No readable text found."
+                )
+
+            else:
+
+                st.error(
+                    result.get(
+                        "message",
+                        "Document indexing failed."
                     )
-
-                    st.write(f'Pages: {result["pages"]}')
-                    st.write(f'Chunks: {result["chunks"]}')
-
-                elif result["status"] == "duplicate":
-
-                    st.warning(
-                        "Document already exists."
-                    )
-
-                elif result["status"] == "empty":
-
-                    st.warning(
-                        "No readable text found in the document."
-                    )
-
-                elif result["status"] == "failed":
-
-                    st.error(
-                        result["message"]
-                    )
-
-            except Exception as e:
-
-                st.exception(e)
+                )
 
     st.divider()
 
-    if st.button("Reset Knowledge Base"):
+    if st.button(
+        "Reset Knowledge Base"
+    ):
 
-        print(chroma_service.count())
+        ingestion_service.reset()
 
-        shutil.rmtree("chroma_db", ignore_errors=True)
+        st.cache_resource.clear()
 
-        Path("document_registry.json").write_text("{}")
+        st.session_state.uploader_key += 1
 
-        st.success("Knowledge base cleared.")
+        st.session_state.messages = []
+
+        st.success(
+            "Knowledge base reset."
+        )
 
         st.rerun()

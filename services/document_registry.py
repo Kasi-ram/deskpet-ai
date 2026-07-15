@@ -1,6 +1,8 @@
 import json
 import hashlib
+
 from pathlib import Path
+from datetime import datetime
 
 
 class DocumentRegistry:
@@ -9,19 +11,32 @@ class DocumentRegistry:
 
     def __init__(self):
 
+        self._ensure_file()
+
+    def _ensure_file(self):
+
         if not self.FILE.exists():
 
-            self.FILE.write_text("{}")
+            self.FILE.write_text(
+                "{}",
+                encoding="utf-8"
+            )
 
     def _load(self):
 
-        if not self.FILE.exists():
+        self._ensure_file()
 
-            self.FILE.write_text("{}")
+        try:
 
-        return json.loads(
-            self.FILE.read_text()
-        )
+            return json.loads(
+                self.FILE.read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        except json.JSONDecodeError:
+
+            return {}
 
     def _save(self, data):
 
@@ -29,7 +44,8 @@ class DocumentRegistry:
             json.dumps(
                 data,
                 indent=4
-            )
+            ),
+            encoding="utf-8"
         )
 
     def calculate_hash(
@@ -63,7 +79,27 @@ class DocumentRegistry:
         data[file_hash] = {
             "filename": filename,
             "pages": pages,
-            "chunks": chunks
+            "chunks": chunks,
+            "uploaded_at": (
+                datetime.now()
+                .strftime("%Y-%m-%d %H:%M:%S")
+            )
         }
 
         self._save(data)
+
+    def list_documents(self):
+
+        return list(
+            self._load().values()
+        )
+
+    def count(self):
+
+        return len(
+            self._load()
+        )
+
+    def clear(self):
+
+        self._save({})

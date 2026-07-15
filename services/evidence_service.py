@@ -6,9 +6,17 @@ from services.groq_service import GroqService
 class EvidenceService:
 
     def __init__(self):
+
         self.llm_service = GroqService()
 
-    def select(self, question, results):
+    def select(
+        self,
+        question,
+        results
+    ):
+
+        if not results:
+            return []
 
         formatted_chunks = []
 
@@ -23,35 +31,44 @@ CONTENT:
 """
             )
 
-        chunks_text = "\n".join(formatted_chunks)
+        chunks_text = "\n".join(
+            formatted_chunks
+        )
 
         prompt = f"""
-You are an evidence selection system.
+You are a strict evidence selection system.
 
-Select chunks that contain information useful for answering
-the user's question.
+Select chunks that contain information relevant
+to answering the user's exact question.
 
-Understand semantically equivalent wording.
+Important rules:
 
-Examples of semantic equivalence:
-
-- travel commenced = travel started
-- schedule change = date, flight, or route change
-- after departure = after travel started
-
-Prefer chunks containing an explicit policy rule.
-
-Do not answer the user's question.
-
-Return ONLY a JSON array of CHUNK_ID values.
+A semantically similar word is NOT enough.
 
 Example:
 
-[2, 4]
+User asks about complimentary tickets.
 
-If no useful evidence exists:
+A chunk about complimentary baggage does NOT
+answer the question.
 
-[]
+Select evidence only when the chunk contains
+facts that genuinely help answer the question.
+
+Short keyword-style questions are valid.
+
+Example:
+
+"Blue Priority Card"
+
+A chunk explaining Blue Priority Card benefits
+is relevant.
+
+Return JSON using exactly this structure:
+
+{{
+    "chunk_ids": []
+}}
 
 USER QUESTION:
 
@@ -62,40 +79,20 @@ CHUNKS:
 {chunks_text}
 """
 
-        response = self.llm_service.ask(prompt)
-
-        print("\nEVIDENCE SELECTOR RESPONSE")
-        print(response)
-
-        return self._parse_response(
-            response,
-            results
-        )
-
-    def _parse_response(self, response, results):
-
         try:
 
-            response = response.strip()
-
-            if response.startswith("```"):
-
-                response = response.replace(
-                    "```json",
-                    ""
+            response = (
+                self.llm_service.ask_json(
+                    prompt
                 )
+            )
 
-                response = response.replace(
-                    "```",
-                    ""
-                )
+            data = json.loads(response)
 
-                response = response.strip()
-
-            chunk_ids = json.loads(response)
-
-            if not isinstance(chunk_ids, list):
-                return []
+            chunk_ids = data.get(
+                "chunk_ids",
+                []
+            )
 
             return [
                 results[chunk_id]
@@ -111,10 +108,5 @@ CHUNKS:
             TypeError,
             ValueError
         ):
-
-            print(
-                "FAILED TO PARSE EVIDENCE RESPONSE:",
-                response
-            )
 
             return []
