@@ -3,26 +3,14 @@ import fitz
 
 class PDFService:
 
-    def extract_text(self, pdf_path):
-
-        doc = fitz.open(pdf_path)
-
-        text = ""
-
-        for page in doc:
-            text += page.get_text()
-
-        doc.close()
-
-        return text
-
-    def extract_pages(self, pdf_path):
-
-        doc = fitz.open(pdf_path)
+    def extract_pages(self, pdf_bytes):
 
         pages = []
 
-        try:
+        with fitz.open(
+            stream=pdf_bytes,
+            filetype="pdf"
+        ) as doc:
 
             for page_number, page in enumerate(
                 doc,
@@ -40,8 +28,14 @@ class PDFService:
                         )
                     )
 
-        finally:
-
-            doc.close()
-
         return pages
+
+
+    def extract_text(self, pdf_bytes):
+
+        pages = self.extract_pages(pdf_bytes)
+
+        return "\n".join(
+            page_text
+            for _, page_text in pages
+        )

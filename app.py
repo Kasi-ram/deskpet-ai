@@ -1,7 +1,11 @@
+from pathlib import Path
+import shutil
 import uuid
+import os
 
 import streamlit as st
 
+from services import chroma_service
 from services.langgraph_agent import LangGraphAgent
 
 from services.document_ingestion_service import (
@@ -199,31 +203,65 @@ with st.sidebar:
 
     uploaded_file = st.file_uploader(
         "Upload airline document",
-        type=["pdf"]
+        type=[
+            "pdf",
+            "txt"
+        ]
     )
 
     if uploaded_file is not None:
 
         if st.button("Add to Knowledge Base"):
 
-            with st.spinner(
-                "Processing document..."
-            ):
+            try:
 
-                result = (
-                    ingestion_service.ingest_pdf(
+                with st.spinner("Processing document..."):
+
+                    result = ingestion_service.ingest_document(
                         uploaded_file
                     )
-                )
 
-            st.success(
-                f'Added {result["source"]}'
-            )
+                if result["status"] == "success":
 
-            st.write(
-                f'Pages: {result["pages"]}'
-            )
+                    st.success(
+                        f'Indexed {result["source"]}'
+                    )
 
-        st.write(
-            f'Chunks: {result["chunks"]}'
-        )
+                    st.write(f'Pages: {result["pages"]}')
+                    st.write(f'Chunks: {result["chunks"]}')
+
+                elif result["status"] == "duplicate":
+
+                    st.warning(
+                        "Document already exists."
+                    )
+
+                elif result["status"] == "empty":
+
+                    st.warning(
+                        "No readable text found in the document."
+                    )
+
+                elif result["status"] == "failed":
+
+                    st.error(
+                        result["message"]
+                    )
+
+            except Exception as e:
+
+                st.exception(e)
+
+    st.divider()
+
+    if st.button("Reset Knowledge Base"):
+
+        print(chroma_service.count())
+
+        shutil.rmtree("chroma_db", ignore_errors=True)
+
+        Path("document_registry.json").write_text("{}")
+
+        st.success("Knowledge base cleared.")
+
+        st.rerun()

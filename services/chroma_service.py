@@ -43,6 +43,17 @@ class ChromaService:
             embeddings=embeddings,
             metadatas=metadatas
         )
+    
+    def stats(self):
+
+        count = self.collection.count()
+
+        return {
+            "documents": count
+        }
+    
+    def count(self):
+        return self.collection.count()
 
     def search(
         self,

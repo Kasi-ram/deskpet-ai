@@ -1,40 +1,43 @@
-import os
-import tempfile
-
 from services.pdf_service import PDFService
 from services.chunk_service import ChunkService
 from services.embedding_service import EmbeddingService
 from services.chroma_service import ChromaService
-
+from services.document_processor import DocumentProcessor
+from services.document_registry import (
+    DocumentRegistry
+)
 
 class DocumentIngestionService:
 
     def __init__(self):
 
-        self.pdf_service = PDFService()
+        self.document_processor = DocumentProcessor()
         self.chunk_service = ChunkService()
         self.embedding_service = EmbeddingService()
         self.chroma_service = ChromaService()
+        self.registry = DocumentRegistry()
 
-    def ingest_pdf(self, uploaded_file):
+    def ingest_document(
+            self,
+            uploaded_file
+        ):
+            
+            
+            file_bytes = uploaded_file.getvalue()
 
-        temp_path = None
+            file_hash = self.registry.calculate_hash(
+                file_bytes
+            )
 
-        try:
+            if self.registry.exists(file_hash):
 
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=".pdf"
-            ) as temp_file:
+                return {
+                    "status": "duplicate",
+                    "source": uploaded_file.name
+                }
 
-                temp_file.write(
-                    uploaded_file.getvalue()
-                )
-
-                temp_path = temp_file.name
-
-            pages = self.pdf_service.extract_pages(
-                temp_path
+            pages = self.document_processor.process(
+                uploaded_file
             )
 
             chunks = []
@@ -59,17 +62,27 @@ class DocumentIngestionService:
             if not chunks:
 
                 return {
+                    "status": "empty",
                     "source": uploaded_file.name,
                     "pages": len(pages),
                     "chunks": 0
                 }
 
-            embeddings = [
-                self.embedding_service.embed(
-                    chunk["text"]
-                )
-                for chunk in chunks
-            ]
+            try:
+
+                embeddings = [
+                    self.embedding_service.embed(
+                        chunk["text"]
+                    )
+                    for chunk in chunks
+                ]
+
+            except Exception as e:
+
+                return {
+                    "status": "failed",
+                    "message": str(e)
+                }
 
             self.chroma_service.add_chunks(
                 chunks=chunks,
@@ -77,17 +90,17 @@ class DocumentIngestionService:
                 source=uploaded_file.name
             )
 
+            self.registry.register(
+                file_hash=file_hash,
+                filename=uploaded_file.name,
+                pages=len(pages),
+                chunks=len(chunks)
+            )
+
             return {
+                "status": "success",
                 "source": uploaded_file.name,
                 "pages": len(pages),
-                "chunks": len(chunks)
+                "chunks": len(chunks),
+                "indexed": len(chunks)
             }
-
-        finally:
-
-            if (
-                temp_path
-                and os.path.exists(temp_path)
-            ):
-
-                os.remove(temp_path)

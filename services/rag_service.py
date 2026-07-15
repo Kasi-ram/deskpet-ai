@@ -71,6 +71,11 @@ class RAGService:
 
         Answer the user using ONLY the supplied evidence.
 
+        If the user's question does not exactly match the available policy,
+        but you find closely related information,
+        state that the exact policy was not found and then present the related policy.
+        Do not imply that the related policy answers the original question.
+
         RULES:
 
         1. Identify the evidence that most directly answers the user's exact intent.

@@ -143,22 +143,30 @@ Purpose:
 Search airline policies, travel rules,
 booking rules and internal documents.
 
-Use knowledge for questions about:
+Use the knowledge tool whenever the answer
+might come from uploaded documents.
 
-- travel changes
-- flight changes
-- route changes
-- date changes
-- booking changes
-- passenger names
-- departure
-- commencement of travel
-- airline policies
-- airline rules
-- group bookings
-- refunds
-- payments
-- ticket issuance
+Examples:
+
+• travel policies
+• baggage
+• luggage
+• complimentary bags
+• check-in
+• booking
+• refunds
+• airline rules
+• airport procedures
+• ticket changes
+• names
+• payments
+• routes
+• schedules
+• ANY question about airline documents
+• ANY question that appears to ask for factual
+  information from uploaded documents
+
+When in doubt, prefer the knowledge tool.
 
 TOOL: calculator
 
