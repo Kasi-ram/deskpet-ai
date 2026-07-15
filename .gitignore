@@ -6,5 +6,5 @@ __pycache__/
 chroma_db/
 
 .vscode/
-
+.idea/
 data/
