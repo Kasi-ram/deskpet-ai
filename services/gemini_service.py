@@ -11,11 +11,22 @@ client = genai.Client(
 
 class GeminiService:
 
-    def ask(self, question):
+    def ask(self, prompt):
 
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=question,
+            contents=prompt,
         )
 
         return response.text
+
+    def stream(self, prompt):
+
+        response = client.models.generate_content_stream(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
