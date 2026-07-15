@@ -1,5 +1,5 @@
 import chromadb
-
+import uuid
 
 class ChromaService:
 
@@ -18,9 +18,10 @@ class ChromaService:
         embeddings,
         source
     ):
+
         ids = [
-            f"chunk_{index}"
-            for index in range(len(chunks))
+            str(uuid.uuid4())
+            for _ in chunks
         ]
 
         documents = [

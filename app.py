@@ -4,6 +4,10 @@ import streamlit as st
 
 from services.langgraph_agent import LangGraphAgent
 
+from services.document_ingestion_service import (
+    DocumentIngestionService
+)
+
 
 st.set_page_config(
     page_title="DeskPet AI",
@@ -15,8 +19,16 @@ st.set_page_config(
 def load_agent():
     return LangGraphAgent()
 
-
 agent = load_agent()
+
+@st.cache_resource
+def load_ingestion_service():
+
+    return DocumentIngestionService()
+
+
+ingestion_service = load_ingestion_service()
+
 
 
 if "thread_id" not in st.session_state:
@@ -180,3 +192,38 @@ with st.sidebar:
         )
 
         st.rerun()
+
+    st.divider()
+
+    st.subheader("Knowledge Base")
+
+    uploaded_file = st.file_uploader(
+        "Upload airline document",
+        type=["pdf"]
+    )
+
+    if uploaded_file is not None:
+
+        if st.button("Add to Knowledge Base"):
+
+            with st.spinner(
+                "Processing document..."
+            ):
+
+                result = (
+                    ingestion_service.ingest_pdf(
+                        uploaded_file
+                    )
+                )
+
+            st.success(
+                f'Added {result["source"]}'
+            )
+
+            st.write(
+                f'Pages: {result["pages"]}'
+            )
+
+        st.write(
+            f'Chunks: {result["chunks"]}'
+        )
