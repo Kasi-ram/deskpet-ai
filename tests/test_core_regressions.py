@@ -40,12 +40,23 @@ class FakeCalculatorTool:
         return {"answer": expression, "sources": []}
 
 
+class FakeWeatherTool:
+
+    def execute(self, location):
+        return {
+            "success": True,
+            "answer": f"Weather in {location}",
+            "sources": []
+        }
+
+
 def install_agent_stubs():
 
     for module_name, class_name, value in [
         ("services.groq_service", "GroqService", FakeGroqService),
         ("tools.knowledge_tool", "KnowledgeTool", FakeKnowledgeTool),
-        ("tools.calculator_tool", "CalculatorTool", FakeCalculatorTool)
+        ("tools.calculator_tool", "CalculatorTool", FakeCalculatorTool),
+        ("tools.weather_tool", "WeatherTool", FakeWeatherTool)
     ]:
         module = types.ModuleType(module_name)
         setattr(module, class_name, value)
@@ -159,6 +170,66 @@ class LangGraphAgentTests(unittest.TestCase):
             FakeKnowledgeTool.calls,
             [("policy", "tenant-a")]
         )
+
+    def test_weather_routing(self):
+
+        self.agent.llm.ask_json = lambda prompt: (
+            '{"tools": ["weather"], '
+            '"knowledge_query": "", '
+            '"calculator_expression": "", '
+            '"weather_location": "Berlin"}'
+        )
+
+        response = self.agent.ask("What is the weather in Berlin?")
+
+        self.assertEqual(response["answer"], "Weather in Berlin")
+
+    def test_multi_tool_routing(self):
+
+        self.agent.llm.ask_json = lambda prompt: (
+            '{"tools": ["weather", "calculator"], '
+            '"knowledge_query": "", '
+            '"calculator_expression": "2 * 3", '
+            '"weather_location": "Berlin"}'
+        )
+
+        response = self.agent.ask(
+            "What is the weather in Berlin and also do some calculations?"
+        )
+
+        self.assertIn("Weather in Berlin", response["answer"])
+        self.assertIn("The calculation result is 2 * 3.", response["answer"])
+
+    def test_general_fallback(self):
+
+        self.agent.llm.ask_json = lambda prompt: (
+            '{"tools": ["knowledge"], '
+            '"knowledge_query": "general topic", '
+            '"calculator_expression": "", '
+            '"weather_location": ""}'
+        )
+
+        original_execute = self.agent.knowledge_tool.execute
+
+        self.agent.knowledge_tool.execute = (
+            lambda q, kb="default": {
+                "answer": "not found",
+                "found": False,
+                "sources": []
+            }
+        )
+
+        self.agent.llm.ask = lambda prompt: "General knowledge response"
+
+        try:
+
+            response = self.agent.ask("Tell me general topic")
+
+            self.assertEqual(response["answer"], "General knowledge response")
+
+        finally:
+
+            self.agent.knowledge_tool.execute = original_execute
 
 
 if __name__ == "__main__":

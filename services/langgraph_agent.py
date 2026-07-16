@@ -17,7 +17,7 @@ from services.groq_service import GroqService
 
 from tools.knowledge_tool import KnowledgeTool
 from tools.calculator_tool import CalculatorTool
-
+from tools.weather_tool import WeatherTool
 
 def is_math_expression(text):
 
@@ -61,20 +61,27 @@ def is_standalone_math_request(question, expression):
 class AgentState(TypedDict):
 
     question: str
-    knowledge_base_id: str
     conversation_history: list
+
+    knowledge_base_id: str
 
     selected_tools: list
 
     knowledge_query: str
+
     calculator_expression: str
+
+    weather_location: str
 
     knowledge_answer: str
     knowledge_found: bool
 
     calculator_answer: str
 
+    weather_answer: str
+
     answer: str
+
     sources: list
 
 
@@ -92,6 +99,10 @@ class LangGraphAgent:
             CalculatorTool()
         )
 
+        self.weather_tool = (
+            WeatherTool()
+        )
+
         graph = StateGraph(
             AgentState
         )
@@ -104,6 +115,11 @@ class LangGraphAgent:
         graph.add_node(
             "knowledge",
             self.knowledge_node
+        )
+
+        graph.add_node(
+            "weather",
+            self.weather_node
         )
 
         graph.add_node(
@@ -131,7 +147,8 @@ class LangGraphAgent:
             self.route_after_planner,
             {
                 "knowledge": "knowledge",
-                "calculator": "calculator"
+                "calculator": "calculator",
+                "weather": "weather"
             }
         )
 
@@ -139,8 +156,18 @@ class LangGraphAgent:
             "knowledge",
             self.route_after_knowledge,
             {
+                "weather": "weather",
                 "calculator": "calculator",
                 "general": "general",
+                "final_answer": "final_answer"
+            }
+        )
+
+        graph.add_conditional_edges(
+            "weather",
+            self.route_after_weather,
+            {
+                "calculator": "calculator",
                 "final_answer": "final_answer"
             }
         )
@@ -165,6 +192,20 @@ class LangGraphAgent:
         self.graph = graph.compile(
             checkpointer=self.memory
         )
+
+    def weather_node(
+            self,
+            state
+        ):
+
+            result = self.weather_tool.execute(
+                state["weather_location"]
+            )
+
+            return {
+
+                "weather_answer": result["answer"]
+            }
 
     def planner_node(
         self,
@@ -192,6 +233,7 @@ class LangGraphAgent:
                 "calculator_expression": expression,
                 "knowledge_answer": "",
                 "knowledge_found": False,
+                "weather_location":"",
                 "calculator_answer": "",
                 "answer": "",
                 "sources": []
@@ -213,6 +255,7 @@ class LangGraphAgent:
                 "calculator_expression": expression,
                 "knowledge_answer": "",
                 "knowledge_found": False,
+                "weather_location":"",
                 "calculator_answer": "",
                 "answer": "",
                 "sources": []
@@ -228,6 +271,7 @@ class LangGraphAgent:
                 "calculator_expression": question,
                 "knowledge_answer": "",
                 "knowledge_found": False,
+                "weather_location":"",
                 "calculator_answer": "",
                 "answer": "",
                 "sources": []
@@ -250,58 +294,180 @@ class LangGraphAgent:
         )
 
         prompt = f"""
-You are the planner for DeskPet AI.
+            You are the Planner for DeskPet AI.
 
-DeskPet is primarily a document knowledge assistant.
+            Your job is ONLY to determine:
 
-Available tools:
+            1. Which tools are required.
+            2. Rewrite follow-up questions into standalone questions.
+            3. Extract structured tool inputs.
 
-knowledge
-Search uploaded documents.
+            Do NOT answer the user's question.
 
-calculator
-Perform mathematical calculations.
+            ------------------------------------
+            AVAILABLE TOOLS
+            ------------------------------------
 
-Rules:
+            knowledge
+            - Search uploaded documents.
+            - Use for:
+            - airline policies
+            - baggage rules
+            - ticket rules
+            - travel rules
+            - company documents
+            - PDFs
+            - manuals
+            - FAQs
+            - SOPs
+            - uploaded knowledge
 
-1. Use calculator when mathematical calculation
-   is requested.
+            calculator
+            - Perform mathematical calculations.
+            - Use ONLY when arithmetic or mathematical computation is requested.
 
-2. For every non-mathematical factual question,
-   use knowledge first.
+            weather
+            - Get live weather information.
+            - Use for:
+            - weather
+            - forecast
+            - temperature
+            - humidity
+            - rainfall
+            - wind
+            - climate
 
-3. A question may use both tools.
+            ------------------------------------
+            RULES
+            ------------------------------------
 
-4. Use conversation history only to rewrite
-   follow-up questions into standalone questions.
+            1.
+            Every document-related question MUST use knowledge.
 
-Example:
+            2.
+            Use calculator ONLY for mathematical expressions.
 
-Previous:
-Can I change travel after commencement?
+            3.
+            Use weather ONLY for weather-related questions.
 
-Current:
-What about before commencement?
+            4.
+            A question may require multiple tools.
 
-knowledge_query:
-Can I change travel before commencement?
+            5.
+            If a follow-up question depends on previous conversation,
+            rewrite it into a complete standalone question.
 
-Return JSON exactly:
+            Example:
 
-{{
-    "tools": [],
-    "knowledge_query": "",
-    "calculator_expression": ""
-}}
+            Previous:
+            Can I change travel after commencement?
 
-CONVERSATION HISTORY:
+            Current:
+            What about before commencement?
 
-{history_text}
+            knowledge_query:
+            Can I change travel before commencement?
 
-CURRENT QUESTION:
+            6.
+            For weather questions return ONLY the city/location name.
 
-{question}
-"""
+            DO NOT return latitude or longitude.
+
+            ------------------------------------
+            EXAMPLES
+            ------------------------------------
+
+            User:
+            How many complimentary bags can infants receive?
+
+            Output:
+
+            {{
+                "tools":["knowledge"],
+                "knowledge_query":"How many complimentary bags can infants receive?",
+                "calculator_expression":"",
+                "weather_location":""
+            }}
+
+            ------------------------------------
+
+            User:
+            25 * 18
+
+            Output:
+
+            {{
+                "tools":["calculator"],
+                "knowledge_query":"",
+                "calculator_expression":"25*18",
+                "weather_location":""
+            }}
+
+            ------------------------------------
+
+            User:
+            What is 10 + 5 and how many complimentary bags can infants receive?
+
+            Output:
+
+            {{
+                "tools":["knowledge","calculator"],
+                "knowledge_query":"How many complimentary bags can infants receive?",
+                "calculator_expression":"10+5",
+                "weather_location":""
+            }}
+
+            ------------------------------------
+
+            User:
+            What's the weather in Berlin?
+
+            Output:
+
+            {{
+                "tools":["weather"],
+                "knowledge_query":"",
+                "calculator_expression":"",
+                "weather_location":"Berlin"
+            }}
+
+            ------------------------------------
+
+            User:
+            What is the weather in Chennai tomorrow and what is 250 * 12?
+
+            Output:
+
+            {{
+                "tools":["weather","calculator"],
+                "knowledge_query":"",
+                "calculator_expression":"250*12",
+                "weather_location":"Chennai"
+            }}
+
+            ------------------------------------
+
+            CONVERSATION HISTORY
+
+            {history_text}
+
+            ------------------------------------
+
+            CURRENT QUESTION
+
+            {question}
+
+            ------------------------------------
+
+            Return ONLY valid JSON.
+
+            {{
+                "tools": [],
+                "knowledge_query": "",
+                "calculator_expression": "",
+                "weather_location": ""
+            }}
+            """
 
         response = self.llm.ask_json(
             prompt
@@ -317,7 +483,7 @@ CURRENT QUESTION:
         selected_tools = [
             tool
             for tool in decision.get("tools", [])
-            if tool in {"knowledge", "calculator"}
+            if tool in {"knowledge", "calculator", "weather"}
         ]
 
         knowledge_query = decision.get(
@@ -327,6 +493,11 @@ CURRENT QUESTION:
 
         calculator_expression = decision.get(
             "calculator_expression",
+            ""
+        ).strip()
+
+        weather_location = decision.get(
+            "weather_location",
             ""
         ).strip()
 
@@ -385,6 +556,7 @@ CURRENT QUESTION:
             "selected_tools": selected_tools,
             "knowledge_query": knowledge_query,
             "calculator_expression": calculator_expression,
+            "weather_location": weather_location,
             "knowledge_answer": "",
             "knowledge_found": False,
             "calculator_answer": "",
@@ -392,23 +564,17 @@ CURRENT QUESTION:
             "sources": []
         }
 
-    def route_after_planner(
-        self,
-        state
-    ):
+    def route_after_planner(self, state):
 
-        if (
-            "knowledge"
-            in state["selected_tools"]
-        ):
+        tools = state["selected_tools"]
 
+        if "knowledge" in tools:
             return "knowledge"
 
-        if "calculator" in state["selected_tools"]:
+        if "weather" in tools:
+            return "weather"
 
-            return "calculator"
-
-        return "knowledge"
+        return "calculator"
 
     def knowledge_node(
         self,
@@ -433,11 +599,27 @@ CURRENT QUESTION:
         state
     ):
 
-        if (
-            "calculator"
-            in state["selected_tools"]
-        ):
+        tools = state["selected_tools"]
 
+        if "weather" in tools:
+            return "weather"
+
+        if "calculator" in tools:
+            return "calculator"
+
+        if not state.get("knowledge_found", False):
+            return "general"
+
+        return "final_answer"
+
+    def route_after_weather(
+        self,
+        state
+    ):
+
+        tools = state["selected_tools"]
+
+        if "calculator" in tools:
             return "calculator"
 
         return "final_answer"
@@ -519,34 +701,49 @@ USER QUESTION:
             ""
         )
 
-        if (
-            "knowledge" in selected_tools
-            and "calculator" in selected_tools
-        ):
+        if len(selected_tools) > 1:
 
             answer_parts = []
 
-            if state["knowledge_found"]:
-                answer_parts.append(knowledge_answer)
-            else:
-                answer_parts.append(
-                    "I could not find the requested information "
-                    "in the available knowledge base."
-                )
+            if "knowledge" in selected_tools:
 
-            answer_parts.append(
-                f"The calculation result is {calculator_answer}."
-            )
+                if state.get("knowledge_found"):
+                    answer_parts.append(knowledge_answer)
+                else:
+                    answer_parts.append(
+                        "I could not find the requested information "
+                        "in the available knowledge base."
+                    )
+
+            if "weather" in selected_tools:
+
+                weather_answer = state.get("weather_answer", "")
+                if weather_answer:
+                    answer_parts.append(weather_answer)
+
+            if "calculator" in selected_tools:
+
+                if calculator_answer:
+                    answer_parts.append(
+                        f"The calculation result is {calculator_answer}."
+                    )
 
             answer = "\n\n".join(answer_parts)
+
+        elif "knowledge" in selected_tools:
+
+            if not state.get("knowledge_found", False) and current_answer:
+                answer = current_answer
+            else:
+                answer = knowledge_answer
+
+        elif "weather" in selected_tools:
+
+            answer = state.get("weather_answer", "")
 
         elif "calculator" in selected_tools:
 
             answer = calculator_answer
-
-        elif "knowledge" in selected_tools:
-
-            answer = knowledge_answer
 
         else:
 
