@@ -61,6 +61,7 @@ def is_standalone_math_request(question, expression):
 class AgentState(TypedDict):
 
     question: str
+    knowledge_base_id: str
     conversation_history: list
 
     selected_tools: list
@@ -416,7 +417,8 @@ CURRENT QUESTION:
 
         result = (
             self.knowledge_tool.execute(
-                state["knowledge_query"]
+                state["knowledge_query"],
+                state.get("knowledge_base_id", "default")
             )
         )
 
@@ -578,7 +580,8 @@ USER QUESTION:
     def ask(
         self,
         question,
-        thread_id="default"
+        thread_id="default",
+        knowledge_base_id="default"
     ):
 
         config = {
@@ -590,15 +593,7 @@ USER QUESTION:
         result = self.graph.invoke(
             {
                 "question": question,
-                "conversation_history": None,
-                "selected_tools": [],
-                "knowledge_query": "",
-                "calculator_expression": "",
-                "knowledge_answer": "",
-                "knowledge_found": False,
-                "calculator_answer": "",
-                "answer": "",
-                "sources": []
+                "knowledge_base_id": knowledge_base_id
             },
             config=config
         )
@@ -611,7 +606,8 @@ USER QUESTION:
     def stream(
         self,
         question,
-        thread_id="default"
+        thread_id="default",
+        knowledge_base_id="default"
     ):
 
         config = {
@@ -622,15 +618,7 @@ USER QUESTION:
 
         initial_state = {
             "question": question,
-            "conversation_history": None,
-            "selected_tools": [],
-            "knowledge_query": "",
-            "calculator_expression": "",
-            "knowledge_answer": "",
-            "knowledge_found": False,
-            "calculator_answer": "",
-            "answer": "",
-            "sources": []
+            "knowledge_base_id": knowledge_base_id
         }
 
         result = initial_state.copy()

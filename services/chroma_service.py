@@ -1,10 +1,12 @@
 import chromadb
-import uuid
+import hashlib
+from pathlib import Path
 
 
 class ChromaService:
 
-    DB_PATH = "chroma_db"
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    DB_PATH = str(PROJECT_ROOT / "chroma_db")
     COLLECTION_NAME = "airline_documents"
 
     def __init__(self):
@@ -19,7 +21,8 @@ class ChromaService:
 
         self.collection = (
             self.client.get_or_create_collection(
-                name=self.COLLECTION_NAME
+                name=self.COLLECTION_NAME,
+                metadata={"hnsw:space": "cosine"}
             )
         )
 
@@ -27,12 +30,16 @@ class ChromaService:
         self,
         chunks,
         embeddings,
-        source
+        source,
+        document_id,
+        knowledge_base_id
     ):
 
         ids = [
-            str(uuid.uuid4())
-            for _ in chunks
+            hashlib.sha256(
+                f"{document_id}:{index}".encode("utf-8")
+            ).hexdigest()
+            for index, _ in enumerate(chunks)
         ]
 
         documents = [
@@ -43,12 +50,14 @@ class ChromaService:
         metadatas = [
             {
                 "source": source,
-                "page": chunk["page"]
+                "page": chunk["page"],
+                "document_id": document_id,
+                "knowledge_base_id": knowledge_base_id
             }
             for chunk in chunks
         ]
 
-        self.collection.add(
+        self.collection.upsert(
             ids=ids,
             documents=documents,
             embeddings=embeddings,
@@ -58,20 +67,25 @@ class ChromaService:
     def search(
         self,
         query_embedding,
+        knowledge_base_id,
         limit=10
     ):
 
-        if self.collection.count() == 0:
+        where = {
+            "knowledge_base_id": knowledge_base_id
+        }
+
+        total_count = self.collection.count()
+
+        if total_count == 0:
             return []
 
         results = self.collection.query(
             query_embeddings=[
                 query_embedding
             ],
-            n_results=min(
-                limit,
-                self.collection.count()
-            )
+            n_results=min(limit, total_count),
+            where=where
         )
 
         documents = results["documents"][0]
@@ -92,18 +106,32 @@ class ChromaService:
             )
         ]
 
-    def count(self):
+    def count(self, knowledge_base_id):
 
-        return self.collection.count()
+        results = self.collection.get(
+            where={"knowledge_base_id": knowledge_base_id},
+            include=[]
+        )
 
-    def clear(self):
+        return len(results["ids"])
 
-        try:
-            self.client.delete_collection(
-                name=self.COLLECTION_NAME
-            )
+    def delete_document(
+        self,
+        document_id,
+        knowledge_base_id
+    ):
 
-        except Exception:
-            pass
+        self.collection.delete(
+            where={
+                "$and": [
+                    {"document_id": document_id},
+                    {"knowledge_base_id": knowledge_base_id}
+                ]
+            }
+        )
 
-        self._load_collection()
+    def clear(self, knowledge_base_id):
+
+        self.collection.delete(
+            where={"knowledge_base_id": knowledge_base_id}
+        )

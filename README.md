@@ -1,17 +1,17 @@
 # DeskPet AI
 
-DeskPet AI is a retro-themed AI desktop assistant built with **Python**, **Streamlit**, and **Google Gemini**. This project is designed as a learning journey covering modern AI concepts such as LLM integration, Retrieval-Augmented Generation (RAG), AI Agents, Memory, and Tool Calling.
+DeskPet AI is a Streamlit-based airline knowledge assistant built with Python, Groq, Gemini embeddings, ChromaDB, and LangGraph. It supports document-grounded answers, calculator requests, and per-session conversation memory.
 
 ---
 
 ## Features
 
-* Retro airport terminal UI
-* Chat interface built with Streamlit
-* Google Gemini integration
-* Modular architecture
-* Ready for RAG integration
-* Extensible design for AI Agents and Tools
+* Streamlit chat interface with LangGraph routing
+* PDF and UTF-8 text document ingestion
+* Gemini embeddings and ChromaDB retrieval
+* Groq-powered evidence selection and grounded answers
+* Calculator tool and per-session conversation memory
+* Per-session knowledge-base isolation and reset
 
 ---
 
@@ -19,7 +19,8 @@ DeskPet AI is a retro-themed AI desktop assistant built with **Python**, **Strea
 
 * Python 3.12+
 * Streamlit
-* Google Gemini API
+* Groq API and Google Gemini embeddings API
+* LangGraph and ChromaDB
 * python-dotenv
 * Git & GitHub
 
@@ -61,7 +62,7 @@ DeskPetAI/
 * Python 3.12 or later
 * Git
 * VS Code (recommended)
-* Google Gemini API Key
+* Groq API key and Google Gemini API key
 
 ---
 
@@ -112,28 +113,24 @@ Create a file named:
 .env
 ```
 
-Add your Gemini API key:
+Add the API keys used for generation and embeddings:
 
 ```text
 GEMINI_API_KEY=YOUR_API_KEY
+GROQ_API_KEY=YOUR_API_KEY
+# Optional: GROQ_MODEL=llama-3.1-8b-instant
+# Optional: RAG_MAX_DISTANCE=0.35
+# Optional: MAX_UPLOAD_BYTES=20971520
 ```
 
 > Do **not** commit the `.env` file to GitHub.
 
 ---
 
-## Run the Gemini Test
-
-Verify that Gemini is configured correctly.
+## Run regression tests
 
 ```bash
-python test_gemini.py
-```
-
-Expected output:
-
-```text
-Hello! How can I help you today?
+python -m unittest discover -s tests
 ```
 
 ---
@@ -192,7 +189,11 @@ deactivate
 
 | Variable       | Description           |
 | -------------- | --------------------- |
-| GEMINI_API_KEY | Google Gemini API Key |
+| GEMINI_API_KEY | Google Gemini embedding API key |
+| GROQ_API_KEY | Groq generation and evidence-selection API key |
+| GROQ_MODEL | Optional Groq model override |
+| RAG_MAX_DISTANCE | Maximum cosine distance for retrieved evidence (default `0.35`) |
+| MAX_UPLOAD_BYTES | Maximum upload size in bytes (default 20 MiB) |
 
 ---
 
@@ -203,13 +204,11 @@ deactivate
 * [x] Virtual environment
 * [x] Streamlit UI
 * [x] Google Gemini integration
-* [ ] Streaming responses
-* [ ] Chat memory
-* [ ] PDF upload
-* [ ] Embeddings
-* [ ] ChromaDB
-* [ ] RAG
-* [ ] AI Agents
+* [x] LangGraph routing and streamed progress
+* [x] Chat memory
+* [x] PDF/text upload and embeddings
+* [x] ChromaDB-backed RAG
+* [x] Evidence selection and calculator tool
 * [ ] Voice Assistant
 
 ---

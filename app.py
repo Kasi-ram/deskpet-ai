@@ -37,6 +37,12 @@ if "thread_id" not in st.session_state:
         uuid.uuid4()
     )
 
+if "knowledge_base_id" not in st.session_state:
+
+    st.session_state.knowledge_base_id = str(
+        uuid.uuid4()
+    )
+
 if "uploader_key" not in st.session_state:
 
     st.session_state.uploader_key = 0
@@ -116,7 +122,10 @@ if question:
 
             for event in agent.stream(
                 question,
-                thread_id=st.session_state.thread_id
+                thread_id=st.session_state.thread_id,
+                knowledge_base_id=(
+                    st.session_state.knowledge_base_id
+                )
             ):
 
                 if event["type"] == "node":
@@ -226,7 +235,8 @@ with st.sidebar:
                 result = (
                     ingestion_service
                     .ingest_document(
-                        uploaded_file
+                        uploaded_file,
+                        st.session_state.knowledge_base_id
                     )
                 )
 
@@ -254,7 +264,7 @@ with st.sidebar:
                     "Document already exists."
                 )
 
-            elif result["status"] == "empty":
+            elif result["status"] in {"empty", "rejected"}:
 
                 st.warning(
                     "No readable text found."
@@ -275,9 +285,9 @@ with st.sidebar:
         "Reset Knowledge Base"
     ):
 
-        ingestion_service.reset()
-
-        st.cache_resource.clear()
+        ingestion_service.reset(
+            st.session_state.knowledge_base_id
+        )
 
         st.session_state.uploader_key += 1
 

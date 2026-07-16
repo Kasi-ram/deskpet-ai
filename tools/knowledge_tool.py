@@ -9,9 +9,11 @@ class KnowledgeTool:
 
     def execute(
         self,
-        question
+        question,
+        knowledge_base_id="default"
     ):
 
         return self.rag.ask(
-            question
+            question,
+            knowledge_base_id
         )

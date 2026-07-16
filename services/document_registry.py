@@ -7,7 +7,7 @@ from datetime import datetime
 
 class DocumentRegistry:
 
-    FILE = Path("document_registry.json")
+    FILE = Path(__file__).resolve().parents[1] / "document_registry.json"
 
     def __init__(self):
 
@@ -28,11 +28,22 @@ class DocumentRegistry:
 
         try:
 
-            return json.loads(
+            data = json.loads(
                 self.FILE.read_text(
                     encoding="utf-8"
                 )
             )
+
+            # Migrate the legacy flat registry in memory. It will be
+            # persisted in this namespaced format on the next write.
+            if data and all(
+                "filename" in value
+                for value in data.values()
+                if isinstance(value, dict)
+            ):
+                return {"default": data}
+
+            return data
 
         except json.JSONDecodeError:
 
@@ -59,24 +70,34 @@ class DocumentRegistry:
 
     def exists(
         self,
-        file_hash
+        file_hash,
+        knowledge_base_id="default"
     ):
 
         data = self._load()
 
-        return file_hash in data
+        return file_hash in data.get(
+            knowledge_base_id,
+            {}
+        )
 
     def register(
         self,
         file_hash,
         filename,
         pages,
-        chunks
+        chunks,
+        knowledge_base_id="default"
     ):
 
         data = self._load()
 
-        data[file_hash] = {
+        documents = data.setdefault(
+            knowledge_base_id,
+            {}
+        )
+
+        documents[file_hash] = {
             "filename": filename,
             "pages": pages,
             "chunks": chunks,
@@ -88,18 +109,26 @@ class DocumentRegistry:
 
         self._save(data)
 
-    def list_documents(self):
+    def list_documents(self, knowledge_base_id="default"):
 
         return list(
-            self._load().values()
+            self._load().get(
+                knowledge_base_id,
+                {}
+            ).values()
         )
 
-    def count(self):
+    def count(self, knowledge_base_id="default"):
 
         return len(
-            self._load()
+            self._load().get(
+                knowledge_base_id,
+                {}
+            )
         )
 
-    def clear(self):
+    def clear(self, knowledge_base_id="default"):
 
-        self._save({})
+        data = self._load()
+        data.pop(knowledge_base_id, None)
+        self._save(data)

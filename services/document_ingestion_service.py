@@ -3,9 +3,15 @@ from services.embedding_service import EmbeddingService
 from services.chroma_service import ChromaService
 from services.document_processor import DocumentProcessor
 from services.document_registry import DocumentRegistry
+import logging
+import os
 
 
 class DocumentIngestionService:
+
+    MAX_UPLOAD_BYTES = int(
+        os.getenv("MAX_UPLOAD_BYTES", 20 * 1024 * 1024)
+    )
 
     def __init__(self):
 
@@ -24,13 +30,23 @@ class DocumentIngestionService:
         )
 
         self.registry = DocumentRegistry()
+        self.logger = logging.getLogger(__name__)
 
     def ingest_document(
         self,
-        uploaded_file
+        uploaded_file,
+        knowledge_base_id="default"
     ):
 
         file_bytes = uploaded_file.getvalue()
+
+        if len(file_bytes) > self.MAX_UPLOAD_BYTES:
+
+            return {
+                "status": "rejected",
+                "source": uploaded_file.name,
+                "message": "The uploaded file is too large."
+            }
 
         file_hash = (
             self.registry.calculate_hash(
@@ -38,12 +54,17 @@ class DocumentIngestionService:
             )
         )
 
-        if self.registry.exists(file_hash):
+        if self.registry.exists(
+            file_hash,
+            knowledge_base_id
+        ):
 
             return {
                 "status": "duplicate",
                 "source": uploaded_file.name
             }
+
+        indexed = False
 
         try:
 
@@ -94,14 +115,19 @@ class DocumentIngestionService:
             self.chroma_service.add_chunks(
                 chunks=chunks,
                 embeddings=embeddings,
-                source=uploaded_file.name
+                source=uploaded_file.name,
+                document_id=file_hash,
+                knowledge_base_id=knowledge_base_id
             )
+
+            indexed = True
 
             self.registry.register(
                 file_hash=file_hash,
                 filename=uploaded_file.name,
                 pages=len(pages),
-                chunks=len(chunks)
+                chunks=len(chunks),
+                knowledge_base_id=knowledge_base_id
             )
 
             return {
@@ -113,25 +139,42 @@ class DocumentIngestionService:
 
         except Exception as error:
 
+            self.logger.exception(
+                "Document ingestion failed for %s",
+                uploaded_file.name
+            )
+
+            if indexed:
+                try:
+                    self.chroma_service.delete_document(
+                        file_hash,
+                        knowledge_base_id
+                    )
+                except Exception:
+                    self.logger.exception(
+                        "Failed to roll back document %s",
+                        uploaded_file.name
+                    )
+
             return {
                 "status": "failed",
                 "source": uploaded_file.name,
-                "message": str(error)
+                "message": "Document indexing failed. Please try again."
             }
 
-    def reset(self):
+    def reset(self, knowledge_base_id="default"):
 
-        self.chroma_service.clear()
+        self.chroma_service.clear(knowledge_base_id)
 
-        self.registry.clear()
+        self.registry.clear(knowledge_base_id)
 
-    def stats(self):
+    def stats(self, knowledge_base_id="default"):
 
         return {
-            "documents": self.registry.count(),
-            "chunks": self.chroma_service.count()
+            "documents": self.registry.count(knowledge_base_id),
+            "chunks": self.chroma_service.count(knowledge_base_id)
         }
 
-    def documents(self):
+    def documents(self, knowledge_base_id="default"):
 
-        return self.registry.list_documents()
+        return self.registry.list_documents(knowledge_base_id)
