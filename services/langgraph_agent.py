@@ -33,7 +33,7 @@ def is_math_expression(text):
 def extract_math_expression(text):
 
     matches = re.findall(
-        r"\d+(?:\.\d+)?(?:\s*[\+\-\*\/]\s*\d+(?:\.\d+)?)+",
+        r"[-+]?\d+(?:\.\d+)?(?:\s*[\+\-\*\/]\s*[-+]?\d+(?:\.\d+)?)+",
         text
     )
 
@@ -440,10 +440,6 @@ CURRENT QUESTION:
 
             return "calculator"
 
-        if not state["knowledge_found"]:
-
-            return "general"
-
         return "final_answer"
 
     def calculator_node(
@@ -548,7 +544,7 @@ USER QUESTION:
 
             answer = calculator_answer
 
-        elif state["knowledge_found"]:
+        elif "knowledge" in selected_tools:
 
             answer = knowledge_answer
 

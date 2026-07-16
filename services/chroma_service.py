@@ -115,6 +115,12 @@ class ChromaService:
 
         return len(results["ids"])
 
+    def distance_metric(self):
+
+        metadata = self.collection.metadata or {}
+
+        return metadata.get("hnsw:space", "l2")
+
     def delete_document(
         self,
         document_id,

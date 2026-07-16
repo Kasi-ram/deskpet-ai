@@ -192,7 +192,7 @@ deactivate
 | GEMINI_API_KEY | Google Gemini embedding API key |
 | GROQ_API_KEY | Groq generation and evidence-selection API key |
 | GROQ_MODEL | Optional Groq model override |
-| RAG_MAX_DISTANCE | Maximum cosine distance for retrieved evidence (default `0.35`) |
+| RAG_MAX_DISTANCE | Optional maximum retrieval distance. Defaults to `0.35` for cosine collections and `1.0` for legacy L2 collections. |
 | MAX_UPLOAD_BYTES | Maximum upload size in bytes (default 20 MiB) |
 
 ---

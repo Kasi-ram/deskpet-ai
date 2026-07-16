@@ -27,9 +27,16 @@ class RAGService:
             EvidenceService()
         )
 
-        self.max_distance = float(
-            os.getenv("RAG_MAX_DISTANCE", "0.35")
-        )
+        configured_distance = os.getenv("RAG_MAX_DISTANCE")
+
+        if configured_distance:
+            self.max_distance = float(configured_distance)
+        elif self.chroma_service.distance_metric() == "cosine":
+            self.max_distance = 0.35
+        else:
+            # Legacy Chroma collections use L2 distance, whose scale is
+            # larger than cosine distance. Keep the cutoff metric-aware.
+            self.max_distance = 1.0
 
     def _build_sources(
         self,

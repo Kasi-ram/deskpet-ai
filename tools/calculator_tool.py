@@ -12,6 +12,11 @@ class CalculatorTool:
         ast.Div: operator.truediv
     }
 
+    UNARY_OPERATORS = {
+        ast.UAdd: operator.pos,
+        ast.USub: operator.neg
+    }
+
     def execute(self, question):
 
         expression = re.sub(
@@ -66,6 +71,19 @@ class CalculatorTool:
             return operator_function(
                 self._evaluate_node(node.left),
                 self._evaluate_node(node.right)
+            )
+
+        if isinstance(node, ast.UnaryOp):
+
+            operator_function = self.UNARY_OPERATORS.get(
+                type(node.op)
+            )
+
+            if not operator_function:
+                raise ValueError("Unsupported operator")
+
+            return operator_function(
+                self._evaluate_node(node.operand)
             )
 
         raise ValueError("Unsupported expression")

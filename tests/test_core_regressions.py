@@ -55,6 +55,7 @@ def install_agent_stubs():
 install_agent_stubs()
 
 from services.langgraph_agent import LangGraphAgent
+from services.evidence_service import EvidenceService
 
 
 class CalculatorToolTests(unittest.TestCase):
@@ -73,6 +74,12 @@ class CalculatorToolTests(unittest.TestCase):
             result["answer"],
             "Unable to calculate the expression."
         )
+
+    def test_calculates_signed_numbers(self):
+
+        result = CalculatorTool().execute("-2 + 3")
+
+        self.assertEqual(result["answer"], "1")
 
 
 class DocumentRegistryTests(unittest.TestCase):
@@ -97,6 +104,29 @@ class DocumentRegistryTests(unittest.TestCase):
                 )
             finally:
                 DocumentRegistry.FILE = original_file
+
+
+class EvidenceServiceTests(unittest.TestCase):
+
+    def test_accepts_numeric_string_chunk_ids(self):
+
+        service = EvidenceService()
+        service.llm_service = type(
+            "StringIdSelector",
+            (),
+            {"ask_json": lambda self, prompt: '{"chunk_ids": ["0"]}'}
+        )()
+        results = [
+            {
+                "document": "Infants receive one cabin bag.",
+                "metadata": {"source": "policy.txt", "page": 1},
+                "distance": 0.5
+            }
+        ]
+
+        selected = service.select("cabin bag for infants", results)
+
+        self.assertEqual(selected, results)
 
 
 class LangGraphAgentTests(unittest.TestCase):

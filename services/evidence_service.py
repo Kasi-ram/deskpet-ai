@@ -96,14 +96,24 @@ CHUNKS:
                 []
             )
 
-            return [
-                results[chunk_id]
-                for chunk_id in chunk_ids
+            selected = []
+
+            for chunk_id in chunk_ids:
+
+                if (
+                    isinstance(chunk_id, str)
+                    and chunk_id.isdigit()
+                ):
+                    chunk_id = int(chunk_id)
+
                 if (
                     isinstance(chunk_id, int)
+                    and not isinstance(chunk_id, bool)
                     and 0 <= chunk_id < len(results)
-                )
-            ]
+                ):
+                    selected.append(results[chunk_id])
+
+            return selected
 
         except (
             json.JSONDecodeError,
