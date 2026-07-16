@@ -42,6 +42,22 @@ def extract_math_expression(text):
 
     return ""
 
+
+def is_standalone_math_request(question, expression):
+
+    if not expression:
+        return False
+
+    remainder = question.replace(expression, "", 1).strip().lower()
+
+    return bool(
+        re.fullmatch(
+            r"(?:what(?:\s+is|'s)?|calculate|compute|solve|evaluate|"
+            r"the\s+result\s+of|please|is)?[\s?:!.,=]*",
+            remainder
+        )
+    )
+
 class AgentState(TypedDict):
 
     question: str
@@ -159,9 +175,12 @@ class LangGraphAgent:
         expression = extract_math_expression(question)
 
         has_math = expression != ""
-        pure_math = (
-            expression
-            and expression == question.strip()
+        pure_math = bool(expression) and (
+            expression == question.strip()
+            or is_standalone_math_request(
+                question,
+                expression
+            )
         )
 
         if pure_math:
@@ -294,7 +313,11 @@ CURRENT QUESTION:
         print("\nPLANNER DECISION")
         print(json.dumps(decision, indent=2))
 
-        selected_tools = decision.get("tools", [])
+        selected_tools = [
+            tool
+            for tool in decision.get("tools", [])
+            if tool in {"knowledge", "calculator"}
+        ]
 
         knowledge_query = decision.get(
             "knowledge_query",
@@ -329,6 +352,12 @@ CURRENT QUESTION:
 
             if "calculator" in selected_tools:
                 selected_tools.remove("calculator")
+
+        # A valid expression must always be calculated, even if the
+        # planner omitted calculator from its tools list.
+        elif "calculator" not in selected_tools:
+
+            selected_tools.append("calculator")
 
         # Knowledge should always be used when
         # a knowledge query exists
@@ -374,7 +403,11 @@ CURRENT QUESTION:
 
             return "knowledge"
 
-        return "calculator"
+        if "calculator" in state["selected_tools"]:
+
+            return "calculator"
+
+        return "knowledge"
 
     def knowledge_node(
         self,
@@ -493,11 +526,21 @@ USER QUESTION:
             and "calculator" in selected_tools
         ):
 
-            answer = (
-                f"{knowledge_answer}\n\n"
-                f"The calculation result is "
-                f"{calculator_answer}."
+            answer_parts = []
+
+            if state["knowledge_found"]:
+                answer_parts.append(knowledge_answer)
+            else:
+                answer_parts.append(
+                    "I could not find the requested information "
+                    "in the available knowledge base."
+                )
+
+            answer_parts.append(
+                f"The calculation result is {calculator_answer}."
             )
+
+            answer = "\n\n".join(answer_parts)
 
         elif "calculator" in selected_tools:
 
@@ -590,7 +633,8 @@ USER QUESTION:
             "sources": []
         }
 
-        result = None
+        result = initial_state.copy()
+        received_update = False
 
         for update in self.graph.stream(
             initial_state,
@@ -602,7 +646,8 @@ USER QUESTION:
 
             state = update[node]
 
-            result = state
+            result.update(state)
+            received_update = True
 
             yield {
                 "type": "node",
@@ -610,7 +655,7 @@ USER QUESTION:
                 "state": state
             }
 
-        if result is None:
+        if not received_update:
 
             result = self.graph.invoke(
                 initial_state,
