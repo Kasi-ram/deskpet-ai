@@ -1,3 +1,5 @@
+import os
+
 from services.embedding_service import EmbeddingService
 from services.chroma_service import ChromaService
 from services.groq_service import GroqService
@@ -37,6 +39,40 @@ class RAGService:
             # Legacy Chroma collections use L2 distance, whose scale is
             # larger than cosine distance. Keep the cutoff metric-aware.
             self.max_distance = 1.0
+
+    def _build_sources(
+        self,
+        results
+    ):
+
+        sources = []
+
+        for result in results:
+
+            metadata = result["metadata"]
+
+            source = {
+                "source": metadata["source"],
+                "page": metadata["page"]
+            }
+
+            if source not in sources:
+                sources.append(source)
+
+        return sources
+
+    def retrieve(
+        self,
+        question,
+        knowledge_base_id="default"
+    ):
+
+        question_embedding = (
+            self.embedding_service.embed(
+                question
+            )
+        )
+
 
     def _build_sources(
         self,
@@ -161,7 +197,11 @@ Rules:
 
 "{self.NOT_FOUND}"
 
-5. Give a direct concise answer.
+5. Present the response professionally:
+   - Use clear markdown structure (such as bold headers, bulleted lists, or key-value tables).
+   - Use bold formatting for important terms, limits, or values.
+   - Keep paragraphs short and digestible.
+   - Maintain a professional, helpful, and corporate tone.
 
 6. Do not mention EVIDENCE numbers in the answer.
 
@@ -195,4 +235,3 @@ ANSWER:
             ),
             "found": True
         }
-import os

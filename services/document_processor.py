@@ -27,7 +27,7 @@ class DocumentProcessor:
                  uploaded_file.getvalue()
              )
         
-        if extension == "txt":
+        if extension in {"txt", "md", "csv", "json", "html", "htm", "xml"}:
 
             return self.text_service.extract_pages(
                 uploaded_file.getvalue()

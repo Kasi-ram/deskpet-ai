@@ -538,6 +538,14 @@ class LangGraphAgent:
             if "knowledge" not in selected_tools:
                 selected_tools.append("knowledge")
 
+        # Ensure weather is selected if a weather location was extracted
+        if weather_location:
+            if "weather" not in selected_tools:
+                selected_tools.append("weather")
+            # If there's a weather location but no knowledge query, it's a pure weather query
+            if not knowledge_query and "knowledge" in selected_tools:
+                selected_tools.remove("knowledge")
+
         # If no tool remains,
         # default to knowledge
         if not selected_tools:
@@ -647,25 +655,49 @@ class LangGraphAgent:
     ):
 
         question = state["question"]
+        conversation_history = state.get("conversation_history") or []
+
+        # Bulletproof case-insensitive keyword guardrail
+        keywords = {
+            "airline", "flight", "baggage", "luggage", "ticket", 
+            "boarding", "booking", "policy", "commencement", 
+            "refund", "fare", "cabin", "travel"
+        }
+        
+        question_lower = question.lower()
+        if any(kw in question_lower for kw in keywords):
+            return {
+                "answer": "I could not find this information in the available knowledge base."
+            }
+
+        history_text = "\n".join(
+            [
+                (
+                    f'{message["role"]}: '
+                    f'{message["content"]}'
+                )
+                for message
+                in conversation_history[-6:]
+            ]
+        )
 
         prompt = f"""
-You are DeskPet AI.
+You are DeskPet AI, a professional airline knowledge assistant.
 
-The uploaded knowledge base was searched first
-and did not contain an answer.
+The uploaded knowledge base was searched first and did not contain an answer.
 
-Answer only if this is a general knowledge,
-casual, or utility question.
+You must ONLY answer simple casual greetings (e.g., "hello", "hi", "how are you") or questions about your own identity/capabilities (e.g., "who are you?", "what is your name?", "what can you do?").
 
-If the question appears to ask about an airline
-policy, internal rule, uploaded document, baggage,
-booking, ticket, travel rule, or company-specific
-information, respond exactly:
+For ANY other question—including general knowledge, sports, history, science, geography, news, math queries not handled by tools, or any factual informational request—you MUST respond with this exact message:
 
 "I could not find this information in the available knowledge base."
 
-USER QUESTION:
+Do NOT attempt to answer or provide information on these general topics.
 
+CONVERSATION HISTORY:
+{history_text}
+
+USER QUESTION:
 {question}
 """
 

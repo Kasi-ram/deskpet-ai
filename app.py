@@ -211,10 +211,14 @@ with st.sidebar:
     st.subheader("Knowledge Base")
 
     uploaded_file = st.file_uploader(
-        "Upload airline document",
+        "Upload document (PDF, TXT, MD, CSV, JSON, HTML)",
         type=[
             "pdf",
-            "txt"
+            "txt",
+            "md",
+            "csv",
+            "json",
+            "html"
         ],
         key=(
             f"document_uploader_"
@@ -298,3 +302,29 @@ with st.sidebar:
         )
 
         st.rerun()
+
+    st.divider()
+
+    st.subheader("📚 Knowledge Base Info")
+
+    docs = ingestion_service.documents(st.session_state.knowledge_base_id)
+    stats = ingestion_service.stats(st.session_state.knowledge_base_id)
+
+    if docs:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="Documents", value=stats["documents"])
+        with col2:
+            st.metric(label="Chunks", value=stats["chunks"])
+
+        st.markdown("**Uploaded Files:**")
+        for doc in docs:
+            uploaded_at = doc.get("uploaded_at", "Unknown")
+            st.markdown(
+                f"📄 **{doc['filename']}**\n"
+                f"- Chunks: `{doc['chunks']}` | Pages: `{doc['pages']}`\n"
+                f"- *Uploaded: {uploaded_at}*\n"
+                "---"
+            )
+    else:
+        st.info("No documents uploaded yet.")

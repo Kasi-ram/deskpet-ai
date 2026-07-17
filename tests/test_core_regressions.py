@@ -231,6 +231,85 @@ class LangGraphAgentTests(unittest.TestCase):
 
             self.agent.knowledge_tool.execute = original_execute
 
+    def test_document_processor_supports_markdown(self):
+
+        from services.document_processor import DocumentProcessor
+
+        class MockUploadedFile:
+            def __init__(self, name, content):
+                self.name = name
+                self.content = content
+            def getvalue(self):
+                return self.content
+
+        uploaded_file = MockUploadedFile("test.md", b"# Header\nContent in markdown")
+        processor = DocumentProcessor()
+        pages = processor.process(uploaded_file)
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(pages[0][0], 1)
+        self.assertIn("Content in markdown", pages[0][1])
+
+    def test_general_fallback_history_context(self):
+
+        self.agent.llm.ask_json = lambda prompt: (
+            '{"tools": ["knowledge"], '
+            '"knowledge_query": "casual chatter", '
+            '"calculator_expression": "", '
+            '"weather_location": ""}'
+        )
+
+        original_execute = self.agent.knowledge_tool.execute
+        self.agent.knowledge_tool.execute = (
+            lambda q, kb="default": {
+                "answer": "not found",
+                "found": False,
+                "sources": []
+            }
+        )
+
+        captured_prompt = []
+        def mock_ask(prompt):
+            captured_prompt.append(prompt)
+            return "General response"
+        self.agent.llm.ask = mock_ask
+
+        try:
+            self.agent.ask("Hello, I am Bob", thread_id="fallback_history")
+            self.agent.ask("What is my name?", thread_id="fallback_history")
+            
+            self.assertTrue(any("Bob" in p for p in captured_prompt))
+        finally:
+            self.agent.knowledge_tool.execute = original_execute
+
+    def test_general_fallback_airline_keywords_guardrail(self):
+
+        self.agent.llm.ask_json = lambda prompt: (
+            '{"tools": ["knowledge"], '
+            '"knowledge_query": "flight info", '
+            '"calculator_expression": "", '
+            '"weather_location": ""}'
+        )
+
+        original_execute = self.agent.knowledge_tool.execute
+        self.agent.knowledge_tool.execute = (
+            lambda q, kb="default": {
+                "answer": "not found",
+                "found": False,
+                "sources": []
+            }
+        )
+
+        self.agent.llm.ask = lambda prompt: "This should be blocked"
+
+        try:
+            response = self.agent.ask("Can I change my flight reservation?")
+            self.assertEqual(
+                response["answer"],
+                "I could not find this information in the available knowledge base."
+            )
+        finally:
+            self.agent.knowledge_tool.execute = original_execute
+
 
 if __name__ == "__main__":
     unittest.main()
